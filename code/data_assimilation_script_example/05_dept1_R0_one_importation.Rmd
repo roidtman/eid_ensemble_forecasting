@@ -1,0 +1,679 @@
+
+---
+title: "1_run_forecast_dept_1"
+output:
+  html_document:
+    toc: true
+---
+
+
+```{r}
+%md
+# Script to load data, functions, and perform data assimliation
+## Here, we are using the spatial model with R0 values informed by Perkins et al. 2016 (Nature Microbiology)
+```
+
+
+```{r}
+%md
+## LOAD AND FORMAT DATA
+```
+
+
+```{r}
+file_path = '20200228_no_tm_ini_5'
+set.seed(51)
+dd_curr = 1
+
+file_path_dept = dd_curr
+```
+
+
+```{r}
+# load in dept. level connectivity matrix
+df_full = read.csv('/dbfs/FileStore/tables/df.csv')
+muni_shape = read.csv('/dbfs/FileStore/tables/shapefiles_muni_id.csv')
+dept_names = unique(muni_shape$dept)[-length(unique(muni_shape$dept))]
+
+# serial interval
+weights.serialinterval = c(0.01134403, 0.18689453, 0.43153347, 0.28740252, 0.08282545)
+```
+
+
+```{r}
+df_dept = data.frame(dept_name = rep(dept_names, max(df_full$week)),
+                    week = rep(1:max(df_full$week), each = length(dept_names)),
+                    pop = rep(0, length(dept_names) * max(df_full$week)),
+                    R0 = rep(0, length(dept_names) * max(df_full$week)),
+                     cases_new = rep(0, length(dept_names) * max(df_full$week)),
+                    week_first_case = rep(NA, length(dept_names) * max(df_full$week)),
+                    num_munis = rep(0, length(dept_names) * max(df_full$week)),
+                    pop_weighted_R0 = rep(0, length(dept_names)))
+```
+
+
+```{r}
+for(mm in unique(df_full$muni)){
+  
+  tmp_id = muni_shape[which(muni_shape$mpios == mm),]
+  
+  df_dept$cases_new[which(df_dept$dept_name == tmp_id$dept)] =  df_dept$cases[which(df_dept$dept_name == tmp_id$dept)] + df_full$cases_new[which(df_full$muni == mm)]
+  df_dept$pop[which(df_dept$dept_name == tmp_id$dept)] =  df_dept$pop[which(df_dept$dept_name == tmp_id$dept)] + df_full$pop[which(df_full$muni == mm)]
+  df_dept$R0[which(df_dept$dept_name == tmp_id$dept)] =  df_dept$R0[which(df_dept$dept_name == tmp_id$dept)] + df_full$R0[which(df_full$muni == mm)]
+  df_dept$num_munis[which(df_dept$dept_name == tmp_id$dept)] = df_dept$num_munis[which(df_dept$dept_name == tmp_id$dept)] + 1
+}
+```
+
+
+```{r}
+df_dept$R0 = df_dept$R0 / df_dept$num_munis
+
+for(dd in 1:length(unique(dept_names))){
+  df_tmp = df_dept[which(df_dept$dept_name == dept_names[dd]),]
+  wk_min_tmp = min(df_tmp$week[which(df_tmp$cases != 0)])
+  
+  df_dept$week_first_case[which(df_dept$dept_name == dept_names[dd])] = wk_min_tmp
+}
+
+df_dept$dept_name = as.character(df_dept$dept_name)
+```
+
+
+```{r}
+# calculating population weighted r0 at a muni level
+pop_weighted_R0 = data.frame(muni = unique(df_full$muni),
+                             R0 = rep(0, length(unique(df_full$muni))))
+
+l = 1
+for(mm in unique(df_full$muni)){
+  
+  tmp_id_1 = muni_shape[which(muni_shape$mpios == mm),]
+  tmp_id_2 = df_full[which(df_full$muni == mm),][1,]
+  
+  pop_weighted_R0[l,]$R0 = tmp_id_2$R0 * tmp_id_2$pop / df_dept$pop[which(df_dept$dept_name == tmp_id_1$dept)][1]
+  
+  l = l + 1
+}
+```
+
+
+```{r}
+for(mm in unique(df_full$muni)){
+  tmp_id = muni_shape[which(muni_shape$mpios == mm),]
+  df_dept$pop_weighted_R0[which(df_dept$dept_name == tmp_id$dept)] = df_dept$pop_weighted_R0[which(df_dept$dept_name == tmp_id$dept)] + pop_weighted_R0$R0[which(pop_weighted_R0$muni == mm)]
+}
+
+# plot(df_dept$pop_weighted_R0[1:32])
+# points(df_dept$R0[1:32], pch = 'x')
+```
+
+
+```{r}
+df_dept$R0 = df_dept$pop_weighted_R0
+head(df_dept)
+```
+
+
+```{r}
+# read in connectivity data
+# connectivity = as.matrix(read.csv('/dbfs/FileStore/tables/connectivity_normalized_department.csv'))
+connectivity = as.matrix(read.csv('/dbfs/FileStore/tables/connectivity_normalized_department_min_value_0.5.csv'))
+
+# splitting connectivity for mapply function
+conn_split <- apply(connectivity, 1, list)
+conn_split <- lapply(conn_split, unlist)
+```
+
+
+```{r}
+%md
+#### Load libraries
+* mvtnorm
+```
+
+
+```{r}
+library(mvtnorm)
+```
+
+
+```{r}
+%md
+#### Global variables
+* **np**: number of particles
+* **loc_ini**: location of first case
+* **week_first_case_min**: the earliest possible week that the first infection could occur; set to wk. 50 right now, which is January, 2015
+```
+
+
+```{r}
+np = 20000
+week_first_case = min(df_dept$week_first_case, na.rm = T)
+week_first_case_min = 50
+```
+
+
+```{r}
+%md
+#### 'Dynamic' data frame to hold outputs and inputs that change through the forecasting period
+
+
+* inf_new, inf_cum, susc_recon, inf_old_move will be updated through time
+* muni, week, and cases_new are pre-allocated
+```
+
+
+```{r}
+head(df_dept)
+```
+
+
+```{r}
+df_dyn = df_dept[,c(1:2,5)]
+df_dyn$inf_new = rep(0, nrow(df_dyn))
+df_dyn$inf_cum = rep(0, nrow(df_dyn))
+df_dyn$inf_old = rep(0, nrow(df_dyn))
+df_dyn$susc_recon = rep(NA, nrow(df_dyn))
+head(df_dyn)
+```
+
+
+```{r}
+%md
+#### 'Static' data frame to hold function / model inputs that do not change
+
+* muni = muni ID; pop = muni population, R0 = pre-calculated muni R0
+* wk_first_case = week (where week 1 = Jan. 1 2014) of first case(s) in the muni
+```
+
+
+```{r}
+df_stat = data.frame(dept_name = unique(df_dept$dept_name),
+                    wk_first_case = df_dept$week_first_case[1:length(unique(df_dept$dept_name))],
+                    pop = df_dept$pop[1:length(unique(df_dept$dept_name))],
+                    R0 = df_dept$R0[1:length(unique(df_dept$dept_name))])
+head(df_stat)
+```
+
+
+```{r}
+%md
+#### Remove all unnecessary inputs into data assimilation algorithm
+```
+
+
+```{r}
+rm(df_full)
+```
+
+
+```{r}
+%md
+## SPECIFY FUNCTIONS
+```
+
+
+```{r}
+%md
+#### Simulation function
+This has been written such that you loop over (sapply) the simulation function. Within the function itself, it is only run once. 
+
+* **theta_in**: parameter set
+* **df_in**: df_dyn for last 5 weeks
+* **len_in**: number of departments
+* **first_week**: if it is the fist week that a case occurred, then first_week=T
+```
+
+
+```{r}
+simulator = function(theta_in, df_in, len_in = 1, pop_in, R0_in){
+  
+  ww = max(df_in$week)
+  infections_old_curr = rep(NA, 5)
+
+  infections_old_curr[1] = df_in$inf_new[which(df_in$week == ww - 1)]
+  infections_old_curr[2] = df_in$inf_new[which(df_in$week == ww - 2)]
+  infections_old_curr[3] = df_in$inf_new[which(df_in$week == ww - 3)]
+  infections_old_curr[4] = df_in$inf_new[which(df_in$week == ww - 4)]
+  infections_old_curr[5] = df_in$inf_new[which(df_in$week == ww - 5)]
+  
+  infections_old = sum(sapply(1:5, function(ff) weights.serialinterval[ff] * infections_old_curr[ff]))
+                                  
+  # simulating new infections for one simulation 
+  inf_tmp = rnbinom(n = len_in, 
+                    size = ceiling(infections_old), 
+                    mu = (ceiling(infections_old)) / pop_in * theta_in$k * R0_in * df_in$susc_recon[which(df_in$week == (ww - 1))])
+  inf_tmp[which(is.na(inf_tmp))] = 0
+  return(list(inf_new = inf_tmp, inf_old = infections_old_curr))
+}
+```
+
+
+```{r}
+%md
+#### Likelihood function
+
+Function to calculate the likelihood of the model (particles) given the newly observed data
+
+* **sim_in**: simulated infections 
+* **rho_in**: reporting rate parameter (particles$dispersion)
+* **disp_in**: dispersion parameter for the negative binomial likelihood function (particles$dispersion)
+* **dat_in**: cases for given week
+```
+
+
+```{r}
+likelihood = function(sim_in, rho_in, disp_in,
+                     dat_in,
+                     browse = F){
+ if(browse) browser()
+  
+  mean_cases = rbinom(n = length(sim_in), size = sim_in, prob = rho_in)
+  
+  LL_out = sum(
+    dnbinom(x = (dat_in + 1),
+           size = disp_in, 
+           mu = (mean_cases + 1), log = T)
+  )
+  
+  return(0.001 * LL_out)
+}
+```
+
+
+```{r}
+%md
+###Particle resampling function
+
+```
+
+
+```{r}
+resample_particles = function(particles_in, num_samples_in = (np * prop_new)){
+  k_trans = log(particles_in$k)
+  rho_trans = logit(particles_in$rho)
+  dispersion_trans = log(particles_in$dispersion)
+  
+  particles_trans = data.frame(k_trans, rho_trans, dispersion_trans)
+  particles_new = rmvnorm(num_samples_in, mean = colMeans(particles_trans), sigma = cov(particles_trans))
+  
+  particles_out = data.frame(
+    k = exp(particles_new[,1]),
+    rho = inv_logit(particles_new[,2]),
+    dispersion = exp(particles_new[,3])
+  )
+  
+  return(particles_out)
+}
+```
+
+
+```{r}
+%md
+#### Transformation functions
+
+Function to transform any parameters that are bound.
+* **logit** and **inv_logit** are used to ensure untransformed parameters are constrained between 0-1
+```
+
+
+```{r}
+logit = function(x){
+  return(log(x / (1-x)))
+}
+
+inv_logit = function(x){
+  return(exp(x) / (1 + exp(x)))
+}
+```
+
+
+## ALLOCATE PARTICLE VALUES
+
+#### Moment matching functions for prior distributions
+* **gamma_mm**: moment matching function for gamma distributed variables (i.e. parameters >0)
+* **beta_mm**: moment matching function for beta dsitributed variables (.e. parameters with range 0-1)
+
+```{r}
+gamma_mm = function(mu, sigma){
+  a = (mu ^ 2) / (sigma ^ 2)
+  b = mu / (sigma ^ 2)
+  return(c(a, b))
+}
+
+beta_mm = function(mu, var){   
+  a = mu*((mu* (1 - mu) / var) - 1)
+  b = a*(1 - mu) / mu
+  return(c(a, b))
+}
+```
+
+
+```{r}
+%md
+#### Mean and variance of reporting rate and R0 multiplier 
+* **reporting rate prior**: mean = 0.35 (e.g., 35% reporting) and variances = 0.05 (e.g., 5% variance)
+* **R0 mulitplier prior**: mean = 3 (e.g., R0 * 3) and sigma = 2 (e.g., standard deviation of 2)
+```
+
+
+```{r}
+beta_rho_in = beta_mm(mu = 0.2, var = 0.05)
+gamma_k_in = gamma_mm(mu = 3, sigma = 2)
+```
+
+
+```{r}
+%md
+#### Creating particle list
+* **k**: R0 multiplier (gamma distributed)
+* **rho**: reporting rate (beta distributed)
+* **dispersion**: negative binomial dispersion parameter; heterogeneity among simulation output (uniform distributed 0-10?)
+* **tm_ini**: timing of first infection (can range from 1 (Jan. 1, 2014) through week of first case (week 84))
+```
+
+
+```{r}
+particles = data.frame(k = rep(NA, np),
+                      rho = rep(NA, np),
+                      dispersion = rep(NA, np),
+                      tm_ini = rep(NA, np))
+particles$k = rgamma(np, shape = gamma_k_in[1], rate = gamma_k_in[2])
+particles$rho = rbeta(np, shape1 = beta_rho_in[1], shape2 = beta_rho_in[2])
+particles$dispersion = runif(np, min = 0, max = 1)
+```
+
+
+## FORECASTING WITH DATA ASSIMILATION
+
+#### Algorithm writes out particles for every time step
+
+```{r}
+head(df_dyn)
+```
+
+
+```{r}
+%md
+## Data assimliation algorithm
+* need to specify which folder to write output to
+```
+
+
+```{r}
+# identifying when to assimilate data in the spatial model
+
+time_btwn_assim = 4
+when_to_assimilate_spatial = seq(week_first_case + time_btwn_assim, max(df_dyn$week), by = time_btwn_assim)
+when_to_assimilate_spatial = c(week_first_case, when_to_assimilate_spatial)
+```
+
+
+```{r}
+df_stat = df_stat[which(df_stat$dept_name == as.character(dept_names[dd_curr])),]
+df_dyn = df_dyn[which(df_dyn$dept_name == as.character(dept_names[dd_curr])),]
+week_first_case = df_stat$wk_first_case[which(df_stat$dept_name == as.character(dept_names[dd_curr]))]
+```
+
+
+```{r}
+# identify where to start the assimilation process, making sure to assimilate data at same time points as the spatial model
+
+when_to_assimilate = seq(week_first_case + time_btwn_assim, max(df_dyn$week), by = time_btwn_assim)
+when_to_assimilate = c(week_first_case, when_to_assimilate)
+```
+
+
+```{r}
+when_to_assimilate_dept_specific = when_to_assimilate_spatial[which((when_to_assimilate_spatial - week_first_case) > 0)]
+when_to_assimilate_dept_specific = c(week_first_case, when_to_assimilate_dept_specific)
+print(when_to_assimilate_dept_specific)
+```
+
+
+```{r}
+particles$tm_ini = base::sample(((week_first_case-1) - 35):(week_first_case-1), np, replace = T)
+```
+
+
+```{r}
+# SPIN-UP FROM INITIAL CONDITIONS
+
+# storage to save spin-up
+spin_up = list()
+length(spin_up) = np
+
+df_list = list()
+
+for(pp in 1:np){
+  
+  l = 1
+  # initialize spin_up
+  spin_up[[pp]] = matrix(NA, nrow = length(dept_names), ncol = length(particles$tm_ini[pp] : (week_first_case-1)))
+  
+  # initialize list
+  df_list[[pp]] = df_dyn
+  
+  # seed infections 
+  df_list[[pp]]$inf_new[which(df_list[[pp]]$week == particles$tm_ini[pp] - 1)] = base::sample(1:5, 1)
+  df_list[[pp]]$inf_cum = df_list[[pp]]$inf_new
+  df_list[[pp]]$susc_recon = df_stat$pop
+  
+  # only need last 8 weeks of data
+  df_list[[pp]] = df_list[[pp]][which(df_list[[pp]]$week %in% particles$tm_ini[pp]:(particles$tm_ini[pp] - 8)),]
+  
+  for(tt_sim in particles$tm_ini[pp]:(week_first_case - 1)){
+    
+    # keeping df_list to only 8 weeks
+      if(tt_sim != particles$tm_ini[pp]){
+        df_list[[pp]] = df_list[[pp]][-which(df_list[[pp]]$week == min(df_list[[pp]]$week)),]
+        df_list[[pp]] = rbind(df_list[[pp]], df_dyn[which(df_dyn$week == tt_sim),])
+      }
+      
+      # time indices
+      wk_ind = which(df_list[[pp]]$week == tt_sim)
+      wk_before_ind = which(df_list[[pp]]$week == tt_sim - 1)
+            
+      # simulation
+        sim_out = simulator(theta = particles[pp,],
+                            pop_in = df_stat$pop,
+                            R0_in= df_stat$R0,
+                             df_in = df_list[[pp]],
+                             len_in = nrow(df_stat))
+      
+      # storing old infections
+      if(tt_sim == particles$tm_ini[pp]){
+        df_list[[pp]]$inf_old[which(df_list[[pp]]$week == tt_sim - 1)] = sim_out$inf_old[1]
+        df_list[[pp]]$inf_old[which(df_list[[pp]]$week == tt_sim - 2)] = sim_out$inf_old[2]
+        df_list[[pp]]$inf_old[which(df_list[[pp]]$week == tt_sim - 3)] = sim_out$inf_old[3]
+        df_list[[pp]]$inf_old[which(df_list[[pp]]$week == tt_sim - 4)] = sim_out$inf_old[4]
+        df_list[[pp]]$inf_old[which(df_list[[pp]]$week == tt_sim - 5)] = sim_out$inf_old[5]
+      }else{
+        df_list[[pp]]$inf_old[which(df_list[[pp]]$week == tt_sim - 1)] = sim_out$inf_old[1]
+      }
+      
+      # storing new infections
+      df_list[[pp]]$inf_new[wk_ind] = sim_out$inf_new
+      spin_up[[pp]][,l] = sim_out$inf_new
+      l = l + 1
+    
+      # cumulative infections
+      df_list[[pp]]$inf_cum[wk_ind] = df_list[[pp]]$inf_cum[wk_before_ind] + df_list[[pp]]$inf_new[wk_ind]
+      
+      # susceptible depletion
+      df_list[[pp]]$susc_recon[wk_ind] = pmax(0, (df_stat$pop - df_list[[pp]]$inf_cum[wk_ind]))
+  }
+}
+```
+
+
+```{r}
+# spin_up = sapply(1:np, function(ff){df_list[[ff]]$inf_new[which(df_list[[ff]]$week == tt_sim)]})
+f = paste0('/dbfs/user/hive/warehouse/roidtman.db/', file_path, '/', file_path_dept, '/I_F/spin_up.rds')
+saveRDS(spin_up, file = f)
+
+f = paste0('/dbfs/user/hive/warehouse/roidtman.db/', file_path, '/', file_path_dept, '/particles/particles_current_original.csv')
+write.csv(particles, file = f, row.names = F)
+```
+
+
+```{r}
+# DATA ASSIMILATION AND PARTICLE RESAMPLING
+# MAKING FORECAST FOR ENTIRE TIME SERIES
+
+# identify IF resampling new particles
+resample_new = TRUE
+# identify proportion of new particles resampled
+prop_new = 0.1
+
+for(tt_assimilate in when_to_assimilate_dept_specific){
+  
+  lik_store = rep(0, np)
+  
+  for(tt in tt_assimilate : max(df_dyn$week)){
+    
+    for(pp in 1:np){
+      
+      # keep df_list only to 8 weeks
+      if(tt != tt_assimilate){
+        df_list[[pp]] = df_list[[pp]][-which(df_list[[pp]]$week == min(df_list[[pp]]$week)),]
+        df_list[[pp]] = rbind(df_list[[pp]], df_dyn[which(df_dyn$week == tt),])
+      }else if (tt == when_to_assimilate_dept_specific[1]){
+        df_list[[pp]] = df_list[[pp]][-which(df_list[[pp]]$week == min(df_list[[pp]]$week)),]
+        df_list[[pp]] = rbind(df_list[[pp]], df_dyn[which(df_dyn$week == tt),])
+      }
+    
+      # time indices
+      wk_ind = which(df_list[[pp]]$week == tt)
+      wk_before_ind = which(df_list[[pp]]$week == tt - 1)
+    
+        sim_out = simulator(theta = particles[pp,],
+                            pop_in = df_stat$pop,
+                            R0_in= df_stat$R0,
+                             df_in = df_list[[pp]],
+                             len_in = nrow(df_stat))
+    
+      df_list[[pp]]$inf_old[which(df_list[[pp]]$week == tt - 1)] = sim_out$inf_old[1]
+    
+      # storing new infections
+      df_list[[pp]]$inf_new[wk_ind] = sim_out$inf_new
+      
+      # cumulative infections
+      df_list[[pp]]$inf_cum[wk_ind] = df_list[[pp]]$inf_cum[wk_before_ind] + df_list[[pp]]$inf_new[wk_ind]
+      
+      # susceptible depletion
+      df_list[[pp]]$susc_recon[wk_ind] = pmax(0, (df_stat$pop - df_list[[pp]]$inf_cum[wk_ind]))
+      
+      
+      # where l = the index of the next when to assimilate... probably want to start with it equaling 2
+      if(tt <= (tt_assimilate)){
+        # log likelihoods once data has begun reporting
+        lik_store[pp] = lik_store[pp] + likelihood(sim_in = df_list[[pp]]$inf_new[wk_ind],
+                                   rho_in = particles$rho[pp],
+                                   disp_in = particles$dispersion[pp],
+                                   dat_in = df_dyn$cases_new[which(df_dyn$week == tt)]) 
+      }
+    }
+    
+    if(tt_assimilate == when_to_assimilate_dept_specific[1] & 
+       tt == tt_assimilate + (when_to_assimilate_dept_specific[2] - when_to_assimilate_dept_specific[1])){
+      df_list_keep = df_list
+    }else if(tt_assimilate != when_to_assimilate_dept_specific[1] &
+             tt == (tt_assimilate + time_btwn_assim)){
+        df_list_keep = df_list
+      }
+    
+    # save forecasts
+    I_F = sapply(1:np, function(ff){df_list[[ff]]$inf_new[which(df_list[[ff]]$week == tt)]})
+    f = paste0('/dbfs/user/hive/warehouse/roidtman.db/', file_path, '/', file_path_dept, '/I_F/I_F_', tt_assimilate, '_', tt, '.csv')
+    write.csv(I_F, file = f, row.names = F)
+    
+  }
+  # need to reintialize df_list
+  df_list = df_list_keep
+  
+  if(tt_assimilate != week_first_case){
+    particle_weights = sapply(1:np, function(ff){1/lik_store[ff] / sum(1/lik_store)})
+    
+    # save current particles
+    f = paste0('/dbfs/user/hive/warehouse/roidtman.db/', file_path, '/', file_path_dept, '/particles/particles_current_', tt_assimilate, '.csv')
+    write.csv(particles, file = f, row.names = F)
+  
+    # resample current particles
+    resample_ind = base::sample(1:np, replace = T, prob = particle_weights)
+    particles_resampled = particles[resample_ind,]
+    
+    # if we aren't resampling any new particles
+    if(!resample_new){
+  
+      particles$k = particles_resampled$k
+      particles$rho = particles_resampled$rho
+      particles$dispersion = particles_resampled$dispersion
+      particles$tm_ini = particles_resampled$tm_ini
+  
+      # save I_A and assign I_F to df_list
+      I_A = sapply(resample_ind, function(ff){df_list_keep[[ff]]$inf_new[which(df_list_keep[[ff]]$week %in% tt_assimilate : (tt_assimilate - time_btwn_assim+1))]})
+      f = paste0('/dbfs/user/hive/warehouse/roidtman.db/', file_path, '/', file_path_dept, '/I_A/I_A_', tt_assimilate, '.csv')
+      write.csv(I_A, file = f, row.names = F)
+  
+      # need to reassign inf_new, inf_old_move, inf_cum, and susc_recon     
+      I_A_old_inf = sapply(resample_ind, function(ff){df_list_keep[[ff]]$inf_old})
+      I_A_inf_cum = sapply(resample_ind, function(ff){df_list_keep[[ff]]$inf_cum})
+      I_A_susc_recon = sapply(resample_ind, function(ff){df_list_keep[[ff]]$susc_recon})
+      
+      # reassign values to df_list to be used in next simulation
+      for(pp_tmp in 1:np){
+        df_list[[pp_tmp]]$inf_new[which(df_list_keep[[pp_tmp]]$week == tt)] = I_A[nrow(I_A), pp_tmp] 
+        df_list[[pp_tmp]]$inf_old = I_A_old_inf[,pp_tmp]
+        df_list[[pp_tmp]]$inf_cum = I_A_inf_cum[,pp_tmp]
+        df_list[[pp_tmp]]$susc_recon = I_A_susc_recon[,pp_tmp]
+      }
+    }else{ # if we are resampling new particles
+      
+      # sample NEW particles from multivariate normal
+      particles_resampled_new = resample_particles(particles_in = particles_resampled)
+      
+      # combining resampled particles and NEW particles
+      particles_resampled_total = particles
+      particles_resampled_total[1:((1-prop_new)*np),] = particles_resampled[1:((1-prop_new)*np),]
+      particles_resampled_total[((1-prop_new)*np + 1) : np, ]$rho = particles_resampled_new$rho
+      particles_resampled_total[((1-prop_new)*np + 1) : np, ]$dispersion = particles_resampled_new$dispersion
+      particles_resampled_total[((1-prop_new)*np + 1) : np, ]$k = particles_resampled_new$k
+      
+      # assigning tm_ini and loc_ini to resampled particles
+      particles_resampled_total[((1-prop_new)*np + 1) : np, ]$tm_ini = particles_resampled[((1-prop_new)*np + 1) : np, ]$tm_ini
+      
+      # combining all particles into new particles list
+      particles$k = particles_resampled_total$k
+      particles$rho = particles_resampled_total$rho
+      particles$dispersion = particles_resampled_total$dispersion
+      particles$tm_ini = particles_resampled$tm_ini
+
+      
+      # save I_A and assign I_F to df_list
+      I_A = sapply(resample_ind, function(ff){df_list_keep[[ff]]$inf_new[which(df_list_keep[[ff]]$week %in% tt_assimilate : (tt_assimilate - time_btwn_assim+1))]})
+      f = paste0('/dbfs/user/hive/warehouse/roidtman.db/', file_path, '/', file_path_dept, '/I_A/I_A_', tt_assimilate, '.csv')
+      write.csv(I_A, file = f, row.names = F)
+  
+      # need to reassign inf_new, inf_old_move, inf_cum, and susc_recon     
+      I_A_old_inf = sapply(resample_ind, function(ff){df_list_keep[[ff]]$inf_old})
+      I_A_inf_cum = sapply(resample_ind, function(ff){df_list_keep[[ff]]$inf_cum})
+      I_A_susc_recon = sapply(resample_ind, function(ff){df_list_keep[[ff]]$susc_recon})
+  
+      for(pp_tmp in 1:np){
+        df_list[[pp_tmp]]$inf_new[which(df_list[[pp_tmp]]$week == tt)] = I_A[nrow(I_A), pp_tmp] 
+        df_list[[pp_tmp]]$inf_old = I_A_old_inf[,pp_tmp]
+        df_list[[pp_tmp]]$inf_cum = I_A_inf_cum[,pp_tmp]
+        df_list[[pp_tmp]]$susc_recon = I_A_susc_recon[,pp_tmp]
+      }
+    }
+  }
+}
+```
+
+
+```{r}
+%md
+#### TESTING
+```
+
