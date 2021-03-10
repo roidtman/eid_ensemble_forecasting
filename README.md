@@ -61,10 +61,10 @@ The file code/processing/process_forecasts.R processes forecast output for each 
 Warning: the processed RData output files for these models are very large. 
 
 ## Producing ensemble weights and other analyses
-The file code/1_analysis_forecasting_ensemble_through_time_EM.R produces the EM ensemble weights. 
-The file code/1_analysis_forecasting_ensemble_EW.R produces the equally-weighted ensemble. 
-The file code/1_analysis_forecasting_output_per_model.R provides sanity checks and exploratory data analysis plots. 
-The file code/1_analysis_particle_retention_rate.R provides analyses on particle retention and explores *why* forecasts are improving.
+* The file code/1_analysis_forecasting_ensemble_through_time_EM.R produces the EM ensemble weights. 
+* The file code/1_analysis_forecasting_ensemble_EW.R produces the equally-weighted ensemble. 
+* The file code/1_analysis_forecasting_output_per_model.R provides sanity checks and exploratory data analysis plots. 
+* The file code/1_analysis_particle_retention_rate.R provides analyses on particle retention and explores *why* forecasts are improving.
 
 ## Producing figures
 All other code/produce_figure files provide analyses and processing necessary for figures. 
