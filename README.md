@@ -35,10 +35,26 @@ All output csv files from those forecasting algorithms are included in the outpu
 We used R version 3.6.3, "Holding the Windsock" to process  
 We used R on Databricks to run forecasting algorithms. 
 
+R packages (with version number) necessary for these analyses:
+* viridis (0.5.1)
+* lubridate (1.7.4)
+* sn (1.6.1)
+* dplyr (0.8.5)
+* stats (3.6.3)
+* yarrr (0.1.5)
+* vioplot (0.3.4)
+* sf * (0.8.1)
+* maptools (0.9.9)
+* fields (10.3)
+* stringr (1.4.0)
+* rgeos (0.5.2)
+* rgdal (1.4.8)
+* mvtnorm (1.1.0)
+
 ## Processing the forecast output
 The file code/processing/process_forecasts.R processes forecast output for each spatially coupled model and produces the I_A_processed.RData, I_F_I_A_processed_rho.RData, and I_F_processed.RData for each respective model. The file code/processing/process_non-spatial_forecasts.R processes forecast output for each department for the non-spatial models and produces one RData file for each model encompassing all departments. 
 
-##Producing ensemble weights and other analyses
+## Producing ensemble weights and other analyses
 The file code/1_analysis_forecasting_ensemble_through_time_EM.R produces the EM ensemble weights. 
 The file code/1_analysis_forecasting_ensemble_EW.R produces the equally-weighted ensemble. 
 The file code/1_analysis_forecasting_output_per_model.R provides sanity checks and exploratory data analysis plots. 
