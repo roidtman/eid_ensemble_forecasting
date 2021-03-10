@@ -43,7 +43,7 @@ R packages (with version number) necessary for these analyses:
 * stats (3.6.3)
 * yarrr (0.1.5)
 * vioplot (0.3.4)
-* sf * (0.8.1)
+* sf (0.8.1)
 * maptools (0.9.9)
 * fields (10.3)
 * stringr (1.4.0)
@@ -52,7 +52,13 @@ R packages (with version number) necessary for these analyses:
 * mvtnorm (1.1.0)
 
 ## Processing the forecast output
-The file code/processing/process_forecasts.R processes forecast output for each spatially coupled model and produces the I_A_processed.RData, I_F_I_A_processed_rho.RData, and I_F_processed.RData for each respective model. The file code/processing/process_non-spatial_forecasts.R processes forecast output for each department for the non-spatial models and produces one RData file for each model encompassing all departments. 
+The file code/processing/process_forecasts.R processes forecast output for each spatially coupled model and produces the I_A_processed.RData, I_F_I_A_processed_rho.RData, and I_F_processed.RData for each respective model. The file code/processing/process_non-spatial_forecasts.R processes forecast output for each department for the non-spatial models and produces one RData file for each model encompassing all departments. It is necessary to first process forecast outputs into RData files for subsequent analyses. 
+
+**For spatially coupled models**: To run the processing_forecasts.R, you must identify the model output (and file path) you are hoping to process. You can do this directly by changing the file_path argument on line 17. Path names correspond to the folder names in the output folder. Spatial models are 1-4, 9-16. 
+
+**For non-spatial models**: To run the processing_non-spatial_forecasts.R, you must identify the model output (and file path) you are hoping to process. You can do this directly by changing the file_path argument on line 17. Path names correspond to the folder names in the output folder. Non-spatial models are 5-8. 
+
+Warning: the processed RData output files for these models are very large. 
 
 ## Producing ensemble weights and other analyses
 The file code/1_analysis_forecasting_ensemble_through_time_EM.R produces the EM ensemble weights. 
