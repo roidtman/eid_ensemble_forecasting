@@ -188,21 +188,22 @@ plot(-100, -100, xlim = c(-1, 1), ylim = c(0, 1), xaxt = 'n', yaxt = 'n', bty = 
 
 
 plot(-100, -100, xlim = c(-1, 1), ylim = c(0, 1), xaxt = 'n', yaxt = 'n', bty = 'n')
-legend('topleft', legend = c('CDR-informed', 
-                             'Gravity', 
-                             'Radiation',
-                             'No movement'), bty = 'n', 
-       fill = cols[1:4], cex = 1.1, border = cols[1:4])
+legend('topleft', legend = rev(c('CDR-informed', 
+                                 'Gravity', 
+                                 'Radiation',
+                                 'No movement')), bty = 'n', 
+       fill = rev(cols[1:4]), cex = 1.1, border = rev(cols[1:4]))
 
 plot(-100, -100, xlim = c(-1, 1), ylim = c(0, 1), xaxt = 'n', yaxt = 'n', bty = 'n')
-legend('topleft', legend = c('Static R', 
-                             'Dynamic R'), bty = 'n', 
-       fill = cols[5:6], cex = 1.1, border = cols[5:6])
+legend('topleft', legend = rev(c('Static R', 
+                                 'Dynamic R')), bty = 'n', 
+       fill = rev(cols[5:6]), cex = 1.1, border = rev(cols[5:6]))
 
 plot(-100, -100, xlim = c(-2, 2), ylim = c(-1, 1), xaxt = 'n', yaxt = 'n', bty = 'n')
-legend('topleft', legend = c('1 introduction', 
-                             '2 introductions'), bty = 'n', 
-       fill = cols[7:8], cex = 1.1, border = cols[7:8])
+legend('topleft', legend = rev(c('1 introduction', 
+                                 '2 introductions')), bty = 'n', 
+       fill = rev(cols[7:8]), cex = 1.1, border = rev(cols[7:8]))
+
 
 
 dev.off()
