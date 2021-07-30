@@ -203,8 +203,10 @@ for(tt in 1:num_targets){
   # plot y axis ordered by forecast score
   ys_to_plot = order(rowSums(average_FS_relative_to_baseline_targets[tt,,]))
   
+  # cols = center_data_fxn(vec_in = as.vector(average_FS_relative_to_baseline_targets[tt,,]), browse = F,
+  #                        col_less_in = 'deeppink4', col_greater_in = 'darkcyan')
   cols = center_data_fxn(vec_in = as.vector(average_FS_relative_to_baseline_targets[tt,,]), browse = F,
-                         col_less_in = 'deeppink4', col_greater_in = 'darkcyan')
+                         col_less_in = 'brown1', col_greater_in = 'cornflowerblue')
   image(t(average_FS_relative_to_baseline_targets[tt, ys_to_plot, rev(xs_to_plot)]), col = cols, xaxt = 'n', yaxt = 'n')
   axis(side = 2, at = seq(0, 1, length.out = length(runs)), labels = model_names[ys_to_plot], las = 1)
   axis(side = 2, at = seq(0, 1, length.out = length(runs))[which(ys_to_plot == 17)], 
@@ -223,7 +225,9 @@ mtext(side = 2, line = 2, text = 'Models ordered by performance in each metric (
 # add colorbars
 par(mar = c(1,0,2,5))
 for(tt in 1:num_targets){
-  cols = center_data_fxn(vec_in = as.vector(average_FS_relative_to_baseline_targets[tt,,]), browse = F,col_less_in = 'deeppink4', col_greater_in = 'darkcyan')
+  # cols = center_data_fxn(vec_in = as.vector(average_FS_relative_to_baseline_targets[tt,,]), browse = F,col_less_in = 'deeppink4', col_greater_in = 'darkcyan')
+  cols = center_data_fxn(vec_in = as.vector(average_FS_relative_to_baseline_targets[tt,,]), 
+                         browse = F,col_less_in = 'brown1', col_greater_in = 'cornflowerblue')
   color.bar(cols, min = -1)
   if(tt == 1){
     mtext(side = 3, text = '% change from', cex = 0.8, line = 1)
@@ -324,12 +328,18 @@ for(tt in 1:num_targets){
   ys_to_plot = order(rowSums(average_FS_relative_to_baseline_targets[tt,,]))
   
   if(tt == 2){
+    # cols = center_data_fxn(vec_in = as.vector(average_FS_relative_to_baseline_targets[tt,,]), browse = F,
+    #                        col_less_in = 'deeppink4', col_greater_in = 'darkcyan', add_in = 0.000001,
+    #                        by_in = 0.000001)
     cols = center_data_fxn(vec_in = as.vector(average_FS_relative_to_baseline_targets[tt,,]), browse = F,
-                           col_less_in = 'deeppink4', col_greater_in = 'darkcyan', add_in = 0.000001,
-                           by_in = 0.000001)
+                           col_less_in = 'brown1', col_greater_in = 'cornflowerblue',
+                           add_in = 0.000001, by_in = 0.000001)
   }else{
+    # cols = center_data_fxn(vec_in = as.vector(average_FS_relative_to_baseline_targets[tt,,]), browse = F,
+    #                        col_less_in = 'deeppink4', col_greater_in = 'darkcyan',
+    #                        add_in = 0.00001, by_in = 0.00001)
     cols = center_data_fxn(vec_in = as.vector(average_FS_relative_to_baseline_targets[tt,,]), browse = F,
-                           col_less_in = 'deeppink4', col_greater_in = 'darkcyan',
+                           col_less_in = 'brown1', col_greater_in = 'cornflowerblue',
                            add_in = 0.00001, by_in = 0.00001)
   }
   
@@ -353,12 +363,18 @@ mtext(side = 2, line = 2, text = 'Models ordered by performance in each metric (
 par(mar = c(1,0,2,5))
 for(tt in 1:num_targets){
   if(tt == 2){
+    # cols = center_data_fxn(vec_in = as.vector(average_FS_relative_to_baseline_targets[tt,,]), browse = F,
+    #                        col_less_in = 'deeppink4', col_greater_in = 'darkcyan', add_in = 0.000001,
+    #                        by_in = 0.000001)
     cols = center_data_fxn(vec_in = as.vector(average_FS_relative_to_baseline_targets[tt,,]), browse = F,
-                           col_less_in = 'deeppink4', col_greater_in = 'darkcyan', add_in = 0.000001,
+                           col_less_in = 'brown1', col_greater_in = 'cornflowerblue', add_in = 0.000001,
                            by_in = 0.000001)
   }else{
+    # cols = center_data_fxn(vec_in = as.vector(average_FS_relative_to_baseline_targets[tt,,]), browse = F,
+    #                        col_less_in = 'deeppink4', col_greater_in = 'darkcyan',
+    #                        add_in = 0.00001, by_in = 0.00001)
     cols = center_data_fxn(vec_in = as.vector(average_FS_relative_to_baseline_targets[tt,,]), browse = F,
-                           col_less_in = 'deeppink4', col_greater_in = 'darkcyan',
+                           col_less_in = 'brown1', col_greater_in = 'cornflowerblue',
                            add_in = 0.00001, by_in = 0.00001)
   }
   color.bar(cols, min = -1)
