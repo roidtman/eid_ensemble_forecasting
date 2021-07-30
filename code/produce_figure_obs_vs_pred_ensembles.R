@@ -428,3 +428,43 @@ dev.off()
 
 
 
+#=============================================================================#
+# oberved versus predicted forecast
+#=============================================================================#
+
+Metrics::rmse(obs_EM, preds_EM)
+Metrics::rmse(obs_EW, preds_EW)
+
+
+#=============================================================================#
+# oberved versus predicted forecast
+#=============================================================================#
+library(ggplot2)
+library(magrittr)
+
+uncertainty_bounds = dplyr::tibble(EW_uncertainty_bounds = var_EW, 
+                                   EM_uncertainty_bounds = var_EM, 
+                                   dept = rep(dds_to_plot, each = 4),
+                                   time = rep(times_to_plot, each = 16)) 
+uncertainty_bounds = tidyr::pivot_longer(
+  uncertainty_bounds,
+  cols = c(EW_uncertainty_bounds, 
+           EM_uncertainty_bounds), 
+  names_to = 'var_type',
+  values_to = 'var') %>%
+  dplyr::mutate(dept = dept_names[dept])
+
+pdf('~/Dropbox/forecasting_tsir/output/main_text_figures/supplement/uncertainty_bounds_example.pdf', 
+    height = 3, width = 6)
+ggplot(uncertainty_bounds, 
+       aes(y = var, x = time, fill = as.factor(dept), 
+           color = as.factor(dept))) + 
+  geom_point() + 
+  geom_smooth() + 
+  facet_wrap(~var_type) + 
+  xlab('Data assimilation period') + 
+  ylab('Magnitude of uncertainty (log10)') + 
+  labs(fill = "Department", color = 'Department') + 
+  theme_bw()
+dev.off()
+
