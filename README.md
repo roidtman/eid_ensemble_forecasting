@@ -71,5 +71,5 @@ All other code/produce_figure files provide analyses and processing necessary fo
 
 
 
-## Questions about code and software can be directed to Rachel Oidtman (roidtman@uchicago.edu)
+## Questions about code and software can be directed to Rachel Oidtman (rjoidtman@gmail.com)
 
