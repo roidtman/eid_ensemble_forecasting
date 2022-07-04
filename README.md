@@ -1,5 +1,6 @@
 # Trade-offs between individual and ensemble forecasts of an emerging infectious disease (Oidtman *et al.*)
 
+This repository contains the code to reproduce the analyses in Oidtman, R.J., Omodei, E., Kraemer, M.U.G. et al. Trade-offs between individual and ensemble forecasts of an emerging infectious disease. _Nat Commun_ **12**, 5379 (2021). https://doi.org/10.1038/s41467-021-25695-0.
 
 ## Getting started
 
